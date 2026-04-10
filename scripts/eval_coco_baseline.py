@@ -47,9 +47,10 @@ def main():
 
         model = YOLO(model_name)
 
-        # Check if model is end2end
+        # Disable end2end for YOLO26 to use NMS (matches official benchmark)
         detect_head = list(model.model.model.children())[-1]
-        is_e2e = getattr(detect_head, "end2end", False)
+        if getattr(detect_head, "end2end", False):
+            detect_head.end2end = False
 
         # Run validation (saves predictions.json)
         metrics = model.val(
@@ -70,7 +71,7 @@ def main():
         # Run official COCO evaluation
         coco_metrics = eval_coco(pred_json)
 
-        row = {"model": model_name.replace(".pt", ""), "end2end": is_e2e, **coco_metrics}
+        row = {"model": model_name.replace(".pt", ""), "end2end": False, **coco_metrics}
         rows.append(row)
         print(f"  => AP={row['AP50-95']}  AP50={row['AP50']}  AP75={row['AP75']}  "
               f"AP_S={row['AP_S']}  AP_M={row['AP_M']}  AP_L={row['AP_L']}")
