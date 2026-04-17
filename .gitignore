@@ -1,4 +1,4 @@
-# Python-generated files
+# Python
 __pycache__/
 *.py[oc]
 build/
@@ -6,11 +6,37 @@ dist/
 wheels/
 *.egg-info
 
-# Virtual environments
+# Virtualenvs
 .venv
 
-# Model weights
+# Claude Code user data (permissions, session cache)
+.claude/
+
+# Model weights (auto-downloaded by ultralytics on pod)
 *.pt
 
-# Ultralytics runs
+# Ultralytics run outputs
 runs/
+
+# ---- Phase 0 artifacts (kept local; not needed for Phase 1 execution) ----
+results/
+docs/phase0_report.md
+docs/research_plan_phase0.md
+docs/coco_baseline.md
+
+# Phase 0 scripts
+scripts/phase0_*.py
+scripts/eval_coco_baseline.py
+scripts/eval_seg_baseline.py
+scripts/debug_*.py
+scripts/find_onnx_layer.py
+scripts/inspect_*.py
+scripts/test_*.py
+scripts/verify_*.py
+scripts/train_one_epoch.py
+scripts/export_onnx.py
+scripts/upload_coco_to_runpod.sh
+
+# Phase 0 configs (only yolo26-p2.yaml is used in Phase 1)
+configs/yolo11-p2*.yaml
+configs/*-seg.yaml
