@@ -14,41 +14,33 @@ job is to execute, not explore.**
 
 | What | Where | Notes |
 |---|---|---|
-| COCO dataset | `/workspace/coco/` | On mounted network volume; **already prepared**, do NOT re-fetch |
-| images | `/workspace/coco/images/{train,val}2017/` | 118K + 5K jpg |
-| COCO JSON | `/workspace/coco/annotations/instances_{train,val}2017.json` | raw GT |
-| YOLO labels | `/workspace/coco/labels/{train,val}2017/` | 117K + 5K txt, pre-converted |
-| Python env | put on **pod root disk** `/root/sod-env` | network volume has 2x MooseFS replication = pay double, avoid for env |
+| COCO dataset | ultralytics default dir (e.g. `/workspace/datasets/coco`) | **Auto-downloaded** by ultralytics on first `model.train(data="coco.yaml")` — ~20 min / ~20 GB |
+| Python env | `.venv/` inside this repo | Already contains `ultralytics==8.4.36`; activate with `source .venv/bin/activate` |
+| Torch build | **must be cu128** | `torch==2.10.0 / torchvision==0.25.0`. The `2.11.0+cu130` that ultralytics' default install pulls is incompatible with this pod's driver (CUDA 12.8) and **silently falls back to CPU**. |
 | Pretrained weights | ultralytics auto-downloads on first use | goes to cwd by default |
 
 ---
 
-## First-time pod setup (5 min)
+## First-time pod setup
 
 Run once per pod instance:
 
 ```bash
-# 1. Env on pod root (NOT on /workspace — avoids 2x billing)
-cd /root
-uv venv sod-env
-source /root/sod-env/bin/activate
-uv pip install ultralytics
+cd /workspace/sod-autoresearch
+source .venv/bin/activate
 
-# 2. Point ultralytics at the prepared COCO
-mkdir -p /root/datasets
-ln -sfn /workspace/coco /root/datasets/coco
-
-# 3. Clone this repo (anywhere on volume is fine)
-cd /workspace
-git clone <repo-url> sod-autoresearch
-cd sod-autoresearch
-
-# 4. Sanity check
-python -c "from ultralytics import YOLO; import os; \
-  assert os.path.isdir('/workspace/coco/images/train2017'); \
-  assert os.path.isdir('/workspace/coco/labels/train2017'); \
-  print('COCO OK')"
+# Sanity: CUDA must be available. If False, torch is the wrong build — see below.
+python -c "import torch; assert torch.cuda.is_available(), 'CUDA unavailable'; print(torch.__version__, torch.cuda.get_device_name(0))"
 ```
+
+If the CUDA check fails (driver/torch mismatch), reinstall torch with the cu128 build:
+
+```bash
+uv pip install --reinstall torch==2.10.0 torchvision==0.25.0 --index-url https://download.pytorch.org/whl/cu128
+```
+
+No COCO setup needed — the first `model.train(data="coco.yaml")` call will
+download and extract COCO (~20 min / ~20 GB) automatically.
 
 ---
 
@@ -103,9 +95,9 @@ Each epoch writes 6 rows (one per size bin: `0-8`, `8-16`, `16-32`, `32-64`, `64
 
 1. **Don't explore** — everything you need is in this CLAUDE.md and research plan.
    Resist the urge to `ls -R` or read random files.
-2. **Don't re-fetch COCO** — it's already on `/workspace/coco`. Re-downloading
-   is 20 GB and wastes ~25 min.
-3. **Don't re-install env needlessly** — if `/root/sod-env` exists, activate it.
+2. **First run downloads COCO (~20 min)** — GPU will sit idle during download
+   and label scan; this is expected, not a hang. Subsequent runs reuse the cache.
+3. **Don't re-install env needlessly** — if `.venv/` exists and `torch.cuda.is_available()` is True, just activate.
 4. **If something fails fast** — read the error, fix the narrow cause, retry.
    Don't start broad refactors.
 5. **Training progress is via `training_monitor.csv`** — don't `tail -f` the
@@ -124,7 +116,6 @@ Each epoch writes 6 rows (one per size bin: `0-8`, `8-16`, `16-32`, `32-64`, `64
 | `scripts/train_p2.py` | Training entrypoint with monitor registered |
 | `scripts/training_monitor.py` | Per-epoch bottleneck metric callback |
 | `scripts/eval_baseline.py` | One-shot baseline val + bottleneck metrics |
-| `scripts/pod_fetch_coco.sh` | Pod-side COCO setup (only if volume is blank) |
 | `docs/research_plan_phase1.md` | Hypothesis / design / success criteria |
 
 **Do not touch files outside this list** without clear reason.

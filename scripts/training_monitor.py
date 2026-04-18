@@ -156,7 +156,9 @@ class TrainingMonitor:
 
     def __init__(self, gt_path, output_csv, size_bins=None,
                  match_iou=0.5, every_n_epochs=1):
-        self.gt_by_image = _load_gt_by_image(gt_path)
+        self.gt_path = gt_path        # lazy-loaded on first callback invocation
+        self.gt_by_image = None       # (COCO may not be downloaded at registration
+                                      #  time; ultralytics fetches it during train)
         self.output_csv = Path(output_csv)
         self.output_csv.parent.mkdir(parents=True, exist_ok=True)
         self.size_bins = size_bins or DEFAULT_SIZE_BINS
@@ -186,6 +188,13 @@ class TrainingMonitor:
         if not jdict:
             print(f"[TrainingMonitor] epoch {epoch}: jdict empty, skipping")
             return
+        if self.gt_by_image is None:
+            # First invocation — COCO should now be downloaded by ultralytics.
+            if not Path(self.gt_path).exists():
+                print(f"[TrainingMonitor] GT still not found at {self.gt_path}; "
+                      f"skipping epoch {epoch}")
+                return
+            self.gt_by_image = _load_gt_by_image(self.gt_path)
         self._logged_epochs.add(epoch)
 
         metrics = compute_bottleneck_metrics(

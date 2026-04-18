@@ -1,101 +1,105 @@
-"""Train a P2-head YOLO26 on COCO with per-epoch bottleneck monitor.
+"""Train YOLO26n-P2 on COCO with per-epoch bottleneck monitor.
 
-Designed to run on a RunPod pod where COCO lives on a mounted network volume.
-Uses env var COCO_ROOT (default /workspace/coco) to locate the dataset.
+All run config is hardcoded below — no CLI args. To change a run, edit this
+file directly (the file itself is the audit record).
 
-Example:
-    # Warm-start from pretrained yolo26n backbone (P2 head random-init)
-    python scripts/train_p2.py \\
-        --cfg configs/yolo26-p2.yaml \\
-        --name p1_exp1 \\
-        --pretrained yolo26n.pt \\
-        --epochs 30 --batch 16 --imgsz 640
+Output: runs/p2/{RUN_NAME}/
+  - training_monitor.csv   per-epoch × size-bin bottleneck metrics
+  - weights/{last,best}.pt ultralytics checkpoints
+  - args.yaml              ultralytics auto-dumps all effective args
 """
-import argparse
-import os
 from pathlib import Path
 
 from ultralytics import YOLO
 
 from training_monitor import register_training_monitor
 
-PROJECT = Path(__file__).resolve().parent.parent
-COCO_ROOT = os.environ.get("COCO_ROOT", "/workspace/coco")
-DEFAULT_GT_PATH = f"{COCO_ROOT}/annotations/instances_val2017.json"
+# =============================================================================
+# Run config  (edit here, not via CLI)
+# =============================================================================
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+# --- What to train -----------------------------------------------------------
+CFG_PATH   = str(PROJECT_ROOT / "configs" / "yolo26n-p2.yaml")
+PRETRAINED = "yolo26n.pt"       # warm-start; P2 head stays random-init
+RUN_NAME   = "p1_exp1"
+TASK       = "detect"
+DATA       = "coco.yaml"        # ultralytics auto-downloads to datasets_dir
+
+# --- Where things live (ultralytics datasets_dir = /workspace/datasets) ------
+PROJECT_DIR  = str(PROJECT_ROOT / "runs" / "p2")
+COCO_VAL_GT  = "/workspace/datasets/coco/annotations/instances_val2017.json"
+
+# --- Training hyperparams ----------------------------------------------------
+EPOCHS        = 30
+IMGSZ         = 640
+BATCH         = 0.95     # A100-80GB can easily hold this for yolo26n-P2 @ 640.
+                        # If OOM, drop to 192 or 128.
+WORKERS       = 32      # 64 CPU cores → 32 dataloader workers
+CACHE         = 'RAM'  # COCO train ~18 GB fits in 503 GB RAM → ~3x speedup
+                        # after epoch 0 (first epoch still does the ingest).
+AMP           = True    # fp16 on A100 tensor cores
+DEVICE        = 0
+OPTIMIZER     = "auto"  # ultralytics picks SGD/AdamW per schedule heuristic
+CLOSE_MOSAIC  = 10      # standard: disable mosaic for last 10 epochs
+SEED          = 0
+DETERMINISTIC = True
+
+# --- Monitor / export --------------------------------------------------------
+MONITOR_EVERY_N_EPOCHS = 1
+EXPORT_ONNX_AT_END     = True
+# =============================================================================
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--cfg", required=True,
-                        help="Model yaml (e.g. configs/yolo26-p2.yaml)")
-    parser.add_argument("--name", required=True,
-                        help="Run name; output under runs/p2/{name}/")
-    parser.add_argument("--task", default="detect", choices=["detect", "segment"])
-    parser.add_argument("--pretrained", default=None,
-                        help="Optional .pt weights to warm-start from. "
-                             "Matching layers load; new layers (e.g. P2 head) "
-                             "stay random-init.")
-    parser.add_argument("--data", default="coco.yaml",
-                        help="Dataset yaml (default: coco.yaml — ultralytics "
-                             "will resolve via its datasets_dir setting)")
-    parser.add_argument("--epochs", type=int, default=30)
-    parser.add_argument("--batch", type=int, default=16)
-    parser.add_argument("--imgsz", type=int, default=640)
-    parser.add_argument("--optimizer", type=str, default="auto")
-    parser.add_argument("--workers", type=int, default=8)
-    parser.add_argument("--project-dir", default=str(PROJECT / "runs" / "p2"))
-    parser.add_argument("--monitor-gt", default=DEFAULT_GT_PATH,
-                        help=f"COCO val annotations JSON (default: $COCO_ROOT/annotations/instances_val2017.json)")
-    parser.add_argument("--monitor-freq", type=int, default=1,
-                        help="Run monitor every N epochs")
-    parser.add_argument("--no-monitor", action="store_true",
-                        help="Skip bottleneck monitor (stock YOLO val only)")
-    parser.add_argument("--no-export", action="store_true",
-                        help="Skip ONNX export after training")
-    args = parser.parse_args()
+    run_dir = Path(PROJECT_DIR) / RUN_NAME
 
     print(f"\n{'='*60}")
-    print(f"  {args.name} | task={args.task} | epochs={args.epochs}")
-    print(f"  cfg={args.cfg}  pretrained={args.pretrained or 'none'}")
-    print(f"  imgsz={args.imgsz} batch={args.batch} optimizer={args.optimizer}")
-    print(f"  COCO_ROOT={COCO_ROOT}")
-    print(f"{'='*60}")
+    print(f"  RUN_NAME={RUN_NAME}   TASK={TASK}   EPOCHS={EPOCHS}")
+    print(f"  cfg={CFG_PATH}")
+    print(f"  pretrained={PRETRAINED}")
+    print(f"  imgsz={IMGSZ}  batch={BATCH}  workers={WORKERS}  cache={CACHE}")
+    print(f"  data={DATA}   datasets_dir=/workspace/datasets")
+    print(f"{'='*60}\n")
 
-    model = YOLO(args.cfg, task=args.task)
-    if args.pretrained:
-        print(f"\nLoading pretrained weights: {args.pretrained}")
-        print("  (matching layers transfer; new layers init randomly)")
-        model = model.load(args.pretrained)
+    model = YOLO(CFG_PATH, task=TASK)
+    print(f"Loading pretrained weights: {PRETRAINED}")
+    print("  (matching layers transfer; P2 head inits randomly)")
+    model = model.load(PRETRAINED)
     model.info()
 
-    run_dir = Path(args.project_dir) / args.name
-    if not args.no_monitor:
-        if not Path(args.monitor_gt).exists():
-            raise FileNotFoundError(
-                f"Monitor GT file not found: {args.monitor_gt}\n"
-                f"Set COCO_ROOT env var, pass --monitor-gt, or --no-monitor"
-            )
-        register_training_monitor(
-            model,
-            gt_path=args.monitor_gt,
-            output_csv=run_dir / "training_monitor.csv",
-            every_n_epochs=args.monitor_freq,
-        )
+    if not Path(COCO_VAL_GT).exists():
+        print(f"[info] monitor GT not present yet: {COCO_VAL_GT}")
+        print(f"       ultralytics will download COCO on first train step;")
+        print(f"       monitor reads the file lazily on first val end.")
 
-    model.train(
-        data=args.data,
-        epochs=args.epochs,
-        imgsz=args.imgsz,
-        batch=args.batch,
-        name=args.name,
-        project=args.project_dir,
-        exist_ok=True,
-        workers=args.workers,
-        optimizer=args.optimizer,
+    register_training_monitor(
+        model,
+        gt_path=COCO_VAL_GT,
+        output_csv=run_dir / "training_monitor.csv",
+        every_n_epochs=MONITOR_EVERY_N_EPOCHS,
     )
 
-    if not args.no_export:
-        print(f"\n--- Exporting {args.name} to ONNX ---")
+    model.train(
+        data=DATA,
+        epochs=EPOCHS,
+        imgsz=IMGSZ,
+        batch=BATCH,
+        workers=WORKERS,
+        cache=CACHE,
+        amp=AMP,
+        device=DEVICE,
+        optimizer=OPTIMIZER,
+        close_mosaic=CLOSE_MOSAIC,
+        seed=SEED,
+        deterministic=DETERMINISTIC,
+        name=RUN_NAME,
+        project=PROJECT_DIR,
+        exist_ok=True,
+    )
+
+    if EXPORT_ONNX_AT_END:
+        print(f"\n--- Exporting {RUN_NAME} to ONNX ---")
         onnx_path = model.export(format="onnx")
         print(f"Done: {onnx_path}")
 
