@@ -36,6 +36,31 @@ EOF
 export COCO_ROOT=/root/datasets/coco
 cd /workspace/sod-autoresearch 
 
-# 6. Claude Code                            
+# 6. Claude Code install (writes to ephemeral ~/.claude, replaced in step 7)
 curl -fsSL https://claude.ai/install.sh | bash
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+
+# 7. Persist Claude Code state to /workspace (survives pod restart)
+#    ~/.claude is on the ephemeral overlay FS — would lose all sessions/memory
+#    on pod terminate. Symlink it to /workspace so state survives.
+#    MUST run after install so install's writes go to ephemeral dir we discard,
+#    not overwrite the preserved state in /workspace/.claude.
+CLAUDE_PERSIST=/workspace/.claude
+if [ ! -e "$CLAUDE_PERSIST" ]; then
+    if [ -d /workspace/claude-home-backup ]; then
+        echo "Restoring Claude state from /workspace/claude-home-backup..."
+        mv /workspace/claude-home-backup "$CLAUDE_PERSIST"
+    elif [ -d "$HOME/.claude" ]; then
+        # First-time setup ever: persist whatever install just created
+        echo "First-time setup: migrating fresh ~/.claude → $CLAUDE_PERSIST"
+        mv "$HOME/.claude" "$CLAUDE_PERSIST"
+    else
+        mkdir -p "$CLAUDE_PERSIST"
+    fi
+fi
+# Replace ~/.claude (whatever install made) with symlink to persistent
+if [ -e "$HOME/.claude" ] && [ ! -L "$HOME/.claude" ]; then
+    rm -rf "$HOME/.claude"
+fi
+[ -L "$HOME/.claude" ] || ln -s "$CLAUDE_PERSIST" "$HOME/.claude"
+echo "~/.claude -> $CLAUDE_PERSIST (persistent)"
