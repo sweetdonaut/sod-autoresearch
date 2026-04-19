@@ -8,6 +8,7 @@ uv venv /root/sod-env --python python3.12
 source /root/sod-env/bin/activate                                                                  
 uv pip install ultralytics==8.4.36
 uv pip install torch==2.10.0 torchvision==0.25.0
+uv cache clean
 yolo settings datasets_dir=/root/datasets                                                          
                                                          
 # 2. Pre-flight
@@ -33,8 +34,8 @@ EOF
 
 # 5. Apply for current run too                                                                     
 export COCO_ROOT=/root/datasets/coco
-cd /workspace/sod-autoresearch                                                                     
-                                                        
+cd /workspace/sod-autoresearch 
+
 # 6. Claude Code                            
 curl -fsSL https://claude.ai/install.sh | bash
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
