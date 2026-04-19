@@ -22,7 +22,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # --- What to train -----------------------------------------------------------
 CFG_PATH   = str(PROJECT_ROOT / "configs" / "yolo26n-p2.yaml")
 PRETRAINED = "yolo26n.pt"       # warm-start; P2 head stays random-init
-RUN_NAME   = "p1_exp1"
+RUN_NAME   = "p1_exp1_sat30"
 TASK       = "detect"
 DATA       = "coco.yaml"        # ultralytics auto-downloads to datasets_dir
 
@@ -33,10 +33,10 @@ COCO_VAL_GT  = "/workspace/datasets/coco/annotations/instances_val2017.json"
 # --- Training hyperparams ----------------------------------------------------
 EPOCHS        = 30
 IMGSZ         = 640
-BATCH         = 0.95     # A100-80GB can easily hold this for yolo26n-P2 @ 640.
+BATCH         = 120     # A100-80GB can easily hold this for yolo26n-P2 @ 640.
                         # If OOM, drop to 192 or 128.
-WORKERS       = 32      # 64 CPU cores → 32 dataloader workers
-CACHE         = 'RAM'  # COCO train ~18 GB fits in 503 GB RAM → ~3x speedup
+WORKERS       = 8      # 64 CPU cores → 32 dataloader workers
+CACHE         = False  # GPU-bound; cache gives 0% speedup. Keep False for determinism.
                         # after epoch 0 (first epoch still does the ingest).
 AMP           = True    # fp16 on A100 tensor cores
 DEVICE        = 0
@@ -44,6 +44,7 @@ OPTIMIZER     = "auto"  # ultralytics picks SGD/AdamW per schedule heuristic
 CLOSE_MOSAIC  = 10      # standard: disable mosaic for last 10 epochs
 SEED          = 0
 DETERMINISTIC = True
+FRACTION = 1.0
 
 # --- Monitor / export --------------------------------------------------------
 MONITOR_EVERY_N_EPOCHS = 1
@@ -93,6 +94,7 @@ def main():
         close_mosaic=CLOSE_MOSAIC,
         seed=SEED,
         deterministic=DETERMINISTIC,
+        fraction=FRACTION,
         name=RUN_NAME,
         project=PROJECT_DIR,
         exist_ok=True,
