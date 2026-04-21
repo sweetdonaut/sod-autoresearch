@@ -20,9 +20,9 @@ from training_monitor import register_training_monitor
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # --- What to train -----------------------------------------------------------
-CFG_PATH   = str(PROJECT_ROOT / "configs" / "yolo26n-p2.yaml")
-PRETRAINED = "yolo26n.pt"       # warm-start; P2 head stays random-init
-RUN_NAME   = "p1_exp1_sat30"
+CFG_PATH   = str(PROJECT_ROOT / "configs" / "yolo26s-p2.yaml")
+PRETRAINED = "yolo26s.pt"       # warm-start; P2 head stays random-init
+RUN_NAME   = "p1_exp2_s_15ep"
 TASK       = "detect"
 DATA       = "coco.yaml"        # ultralytics auto-downloads to datasets_dir
 
@@ -31,10 +31,9 @@ PROJECT_DIR  = str(PROJECT_ROOT / "runs" / "p2")
 COCO_VAL_GT  = "/workspace/datasets/coco/annotations/instances_val2017.json"
 
 # --- Training hyperparams ----------------------------------------------------
-EPOCHS        = 30
+EPOCHS        = 15
 IMGSZ         = 640
-BATCH         = 120     # A100-80GB can easily hold this for yolo26n-P2 @ 640.
-                        # If OOM, drop to 192 or 128.
+BATCH         = 0.97    # auto: fill 97% VRAM (ultralytics float-batch convention)
 WORKERS       = 8      # 64 CPU cores → 32 dataloader workers
 CACHE         = False  # GPU-bound; cache gives 0% speedup. Keep False for determinism.
                         # after epoch 0 (first epoch still does the ingest).
