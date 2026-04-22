@@ -9,32 +9,34 @@ source /root/sod-env/bin/activate
 uv pip install ultralytics==8.4.36
 uv pip install torch==2.10.0 torchvision==0.25.0
 uv cache clean
-yolo settings datasets_dir=/root/datasets                                                          
-                                                         
+yolo settings datasets_dir=/root/datasets
+
 # 2. Pre-flight
-if [ ! -d /workspace/datasets/coco/images/train2017 ]; then                                                 
-    echo "ERROR: /workspace/datasets/coco incomplete. Run pod_fetch_coco.sh first."
-    exit 1                                                                                         
-fi                                                     
-                                                                                                    
-# 3. Copy COCO to local                     
-if [ ! -d /root/datasets/coco ]; then                                                              
-    echo "Copying COCO from volume to local disk (~5 min)..."
-    mkdir -p /root/datasets                                                                        
-    rsync -a --info=progress2 /workspace/datasets/coco /root/datasets/
-fi                                                                                                 
-                                                                                                    
-# 4. Persist env for next shells            
+if [ ! -d /workspace/datasets/VisDrone/images/train ]; then
+    echo "ERROR: /workspace/datasets/VisDrone incomplete (missing images/train)."
+    echo "Download it once via: yolo settings datasets_dir=/workspace/datasets && \\"
+    echo "  python -c \"from ultralytics.data.utils import check_det_dataset; check_det_dataset('VisDrone.yaml')\""
+    exit 1
+fi
+
+# 3. Copy VisDrone to local (~2.3 GB, ~1-2 min)
+if [ ! -d /root/datasets/VisDrone ]; then
+    echo "Copying VisDrone from volume to local disk..."
+    mkdir -p /root/datasets
+    rsync -a --info=progress2 /workspace/datasets/VisDrone /root/datasets/
+fi
+
+# 4. Persist env for next shells
 cat >> ~/.bashrc <<'EOF'
-export YOLO_CONFIG_DIR=/root/.config                                                
-export COCO_ROOT=/root/datasets/coco    
-source /root/sod-env/bin/activate                                                                  
-cd /workspace/sod-autoresearch                                                                     
+export YOLO_CONFIG_DIR=/root/.config
+export VISDRONE_ROOT=/root/datasets/VisDrone
+source /root/sod-env/bin/activate
+cd /workspace/sod-autoresearch
 EOF
 
-# 5. Apply for current run too                                                                     
-export COCO_ROOT=/root/datasets/coco
-cd /workspace/sod-autoresearch 
+# 5. Apply for current run too
+export VISDRONE_ROOT=/root/datasets/VisDrone
+cd /workspace/sod-autoresearch
 
 # 6. Claude Code install (writes to ephemeral ~/.claude, replaced in step 7)
 curl -fsSL https://claude.ai/install.sh | bash
