@@ -50,6 +50,12 @@ def _bin_idx(short_side, bins):
 
 
 def _load_gt_by_image(gt_path):
+    """Load COCO-format GT. Note: category_id convention MUST match what
+    ultralytics emits in jdict (`save_json=True`), which is 1-indexed
+    (train_class + 1). A 0-indexed GT JSON will silently produce ~5x
+    lower per-bin recall due to category off-by-one. See
+    build_visdrone_coco_gt.py for the GT builder.
+    """
     import json
     with open(gt_path) as f:
         coco = json.load(f)
