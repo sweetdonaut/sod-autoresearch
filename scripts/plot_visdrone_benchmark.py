@@ -26,16 +26,18 @@ import matplotlib.pyplot as plt
 
 PROJECT = Path(__file__).resolve().parent.parent
 
-# GFLOPs @ imgsz=640 (verified from `model.info()` for plain variants and
-# yolo26-p2.yaml scale comments for P2 variants). Multiply by 4 for 1280.
-GFLOPS_640 = {
-    ("n", False): 6.1,   ("n", True): 9.5,
-    ("s", False): 22.8,  ("s", True): 27.8,
-    ("m", False): 75.4,  ("m", True): 91.4,
-    ("l", False): 93.8,  ("l", True): 115.3,
-    ("x", False): 209.5, ("x", True): 256.9,
+# GFLOPs @ imgsz=1280, taken directly from each run's AutoBatch probe
+# (ultralytics' thop measurement on a (1, 3, 1280, 1280) input). These
+# reflect the *actual* compute after nc=10 Detect-head adjustment, so
+# they're more accurate than scaling the yaml's nc=80 numbers.
+# x / x+P2 from the original Phase 2 P2-ablation run logs.
+GFLOPS_1280 = {
+    ("n", False):   23.2,  ("n", True):    30.2,
+    ("s", False):   90.2,  ("s", True):   105.8,
+    ("m", False):  299.2,  ("m", True):   365.6,   # m+P2 not run, est 1.22x
+    ("l", False):  372.8,  ("l", True):   461.2,   # l+P2 not run, est 1.24x
+    ("x", False):  838.0,  ("x", True):  1020.0,
 }
-GFLOPS_1280 = {k: v * 4 for k, v in GFLOPS_640.items()}
 
 # Round 1 variants (50 ep, original sweep). x/x+P2 come from the
 # pre-sweep training runs.
@@ -186,10 +188,12 @@ def plot(metric: str, ap_variant: str, out_path: Path):
                 "s--", color="#ff7f0e", linewidth=2.0, markersize=9,
                 label="YOLO26 + P2 (ours, 50 ep)")
         for r in p2:
+            # 50ep +P2 sits below the 100ep variant for the same scale
+            # (less budget = lower AP) — anchor label BELOW point.
             ax.annotate(
                 f"{r['scale']}+P2",
                 xy=(r["gflops"], r[key]),
-                xytext=(7, 10), textcoords="offset points",
+                xytext=(7, -14), textcoords="offset points",
                 fontsize=10, color="#ff7f0e", fontweight="bold",
             )
 
@@ -200,11 +204,19 @@ def plot(metric: str, ap_variant: str, out_path: Path):
                 "^-.", color="#2ca02c", linewidth=2.0, markersize=10,
                 label="YOLO26 + P2 (ours, 100 ep)")
         for r in rows_100_sorted:
+            # Per-variant placement: right-down works for n+P2 (clear of
+            # neighbours), but for s+P2 the right side is occupied by
+            # Dome-DETR-S's annotation, so anchor s+P2's label centred
+            # directly above its triangle instead.
+            if r["scale"] == "s":
+                xytext, ha = (0, 12), "center"
+            else:
+                xytext, ha = (12, -10), "left"
             ax.annotate(
                 f"{r['scale']}+P2 (100ep)",
                 xy=(r["gflops"], r[key]),
-                xytext=(7, -16), textcoords="offset points",
-                fontsize=9, color="#2ca02c", fontweight="bold",
+                xytext=xytext, textcoords="offset points",
+                fontsize=9, color="#2ca02c", fontweight="bold", ha=ha,
             )
 
     if REFERENCE_METHODS:
